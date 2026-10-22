@@ -2,6 +2,156 @@
 title: "Analysing US Births"
 format: html
 author: Alexa Titherington
+execute: 
+ echo: false
 ---
 
+```{r}
+#| cache: true
+#| message: false
+library(tidyverse)
+library(readxl)
 
+births_tibble <- read_excel("data/us_births_1994_2014.xlsx") |>
+  mutate(day_of_week = factor(
+    day_of_week,
+    levels = c("Sun", "Mon", "Tues", "Wed", "Thurs", "Fri", "Sat"),
+    ordered = TRUE
+  ))
+```
+
+```{r}
+average_births <- births_tibble |>
+  dplyr::group_by(month, date_of_month) |>
+  dplyr::summarise(average_births = mean(births), .groups = "drop")
+
+library(ggplot2)
+
+ggplot(average_births, aes(
+  x = date_of_month,
+  y = factor(month, levels = 12:1, labels = month.name[12:1]),
+  fill = average_births
+)) +
+  geom_tile(color = "white", linewidth = 0.4) +
+  scale_fill_viridis_c(
+    option = "mako",
+    name = "Mean births"
+  ) +
+  scale_x_continuous(breaks = seq(1, 31, by = 2)) +
+  labs(
+    title = "Average Daily Births by Calendar Position",
+    x = "Day of month",
+    y = NULL
+  ) +
+  theme_minimal() +
+  theme(panel.grid = element_blank())
+```
+
+```{r}
+christmas_births <- births_tibble |>
+  dplyr::group_by(year) |>
+  dplyr::summarise(
+    births_december_25 = births[month == 12 & date_of_month == 25],
+    christmas_weekday = day_of_week[month == 12 & date_of_month == 25],
+    surrounding_day_average = mean(
+      births[month == 12 & date_of_month %in% c(20:24, 27:30)]
+    ),
+    pct_of_baseline =
+      births_december_25 / surrounding_day_average * 100,
+    .groups = "drop"
+  )
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(christmas_births, aes(x = year, y = pct_of_baseline)) +
+  geom_line(color = "#3B528B", linewidth = 1) +
+  geom_point(aes(color = christmas_weekday), size = 2.5) +
+  scale_color_viridis_d(option = "mako", name = "Weekday") +
+  labs(
+    title = "Christmas Day Births as a Percentage of Baseline",
+    x = "Year",
+    y = "Births on December 25 (% of baseline)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(color = "#21918C"),
+    axis.title = element_text(color = "#3B528B"),
+    axis.text = element_text(color = "#31688E")
+  )
+```
+
+```{r}
+births_model <- lm(
+  births ~ year + month + day_of_week,
+  data = births_tibble
+)
+
+summary(births_model)$r.squared
+```
+
+```{r}
+births_adjusted <- births_tibble |>
+  dplyr::mutate(
+    pct_resid = stats::residuals(births_model) / mean(births) * 100
+  )
+
+calendar_resid <- births_adjusted |>
+  dplyr::filter(!(month == 2 & date_of_month == 29)) |>
+  dplyr::group_by(month, date_of_month) |>
+  dplyr::summarise(mean_pct_resid = mean(pct_resid), .groups = "drop") |>
+  dplyr::mutate(calendar_date = lubridate::make_date(2001, month, date_of_month)) |>
+  dplyr::arrange(calendar_date)
+
+calendar_resid
+```
+
+```{r}
+holiday_labels <- tibble::tibble(
+  calendar_date = lubridate::make_date(
+    2001,
+    c(12, 12, 1, 7),
+    c(24, 25, 1, 4)
+  ),
+  holiday = c("Christmas Eve", "Christmas Day", "New Year's Day", "Independence Day"),
+  label_offset = c(-7, 8, 12, 8)
+) |>
+  dplyr::left_join(calendar_resid, by = "calendar_date") |>
+  dplyr::mutate(
+    label_date = calendar_date + lubridate::days(label_offset),
+    label_y = mean_pct_resid - 7
+  )
+
+ggplot2::ggplot(
+  calendar_resid,
+  ggplot2::aes(x = calendar_date, y = mean_pct_resid)
+) +
+  ggplot2::geom_hline(yintercept = 0, color = "#35B779", linetype = "dashed") +
+  ggplot2::geom_line(color = "#3B528B", linewidth = 0.8) +
+  ggplot2::geom_segment(
+    data = holiday_labels,
+    ggplot2::aes(
+      x = calendar_date,
+      xend = label_date,
+      y = mean_pct_resid,
+      yend = label_y
+    ),
+    inherit.aes = FALSE,
+    color = "#31688E"
+  ) +
+  ggplot2::geom_label(
+    data = holiday_labels,
+    ggplot2::aes(x = label_date, y = label_y, label = holiday),
+    inherit.aes = FALSE,
+    color = "#1B1B3A",
+    fill = "#C7E9E4",
+    size = 3
+  ) +
+  ggplot2::labs(
+    title = "Daily Birth Residuals Across the Calendar",
+    x = "Calendar date",
+    y = "Mean residual (% of overall mean)"
+  ) +
+  ggplot2::theme_minimal()
+```
