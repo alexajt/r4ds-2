@@ -7,6 +7,7 @@ execute:
 ---
 
 ```{r}
+#| include: false
 #| cache: true
 #| message: false
 library(tidyverse)
@@ -48,6 +49,7 @@ ggplot(average_births, aes(
 ```
 
 ```{r}
+#| include: false
 christmas_births <- births_tibble |>
   dplyr::group_by(year) |>
   dplyr::summarise(
@@ -83,6 +85,7 @@ ggplot(christmas_births, aes(x = year, y = pct_of_baseline)) +
 ```
 
 ```{r}
+#| include: false
 births_model <- lm(
   births ~ year + month + day_of_week,
   data = births_tibble
@@ -92,6 +95,7 @@ summary(births_model)$r.squared
 ```
 
 ```{r}
+#| include: false
 births_adjusted <- births_tibble |>
   dplyr::mutate(
     pct_resid = stats::residuals(births_model) / mean(births) * 100
@@ -115,7 +119,7 @@ holiday_labels <- tibble::tibble(
     c(24, 25, 1, 4)
   ),
   holiday = c("Christmas Eve", "Christmas Day", "New Year's Day", "Independence Day"),
-  label_offset = c(-7, 8, 12, 8)
+  label_offset = c(-7, -12, 12, 8)
 ) |>
   dplyr::left_join(calendar_resid, by = "calendar_date") |>
   dplyr::mutate(
